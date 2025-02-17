@@ -1,201 +1,73 @@
 # Neovim Config Template
 
-This template is designed to provide a bare‐bones setup with key areas such as Global Options, Autocommands, a Colorscheme section, and a few example plugins (Treesitter, Dashboard, and Moonfly). Use this file as a starting point for your own Neovim configuration repository.
+This repository provides a minimal Neovim configuration template written in Lua. It covers key areas such as Global Options, Autocommands, Colorscheme setup, and a few example plugins (like Treesitter and Dashboard). Use this as a starting point to create your own custom Neovim configuration.
 
----
+Features
+• Global Options: Configures basic editor behavior including leader keys, line numbering, tab settings, clipboard, and more.
+• Autocommands: Automatically triggers actions on events (e.g., formatting on save, reloading changed files).
+• Colorscheme Section: Loads your preferred colorscheme with a fallback if it’s unavailable.
+• Plugin Examples: Provides example configurations for popular plugins:
+• Treesitter: For advanced syntax highlighting and code understanding.
+• Dashboard: A startup dashboard offering quick access to common actions.
+• Moonfly Colorscheme: An example colorscheme plugin.
 
-## Global Options
+Repository Structure
+• nvim-config-template.md: Contains the annotated configuration template with detailed explanations and code snippets.
+• README.md: (This file) Provides an overview and instructions on how to use the configuration template.
 
-#### Description
-These settings configure Neovim’s basic behavior. They set the leader keys, enable relative line numbers, and adjust essential UI options.
+- init.lua: The main configuration file that makes nvim-init.md possible.
 
-<details>
-  <summary>Code</summary>
+## How to Use This Template
 
-```lua
--- Global Options
-local vim = vim
+### 1. Clone the Repository
 
--- Set leader keys (see :help mapleader)
-vim.g.mapleader = " "
-vim.g.maplocalleader = "\\"
+Clone this repository to your local machine:
 
--- Editor Options
-vim.opt.number = true               -- Absolute line numbers
-vim.opt.relativenumber = true       -- Relative line numbers
-vim.opt.clipboard = "unnamedplus"   -- Use system clipboard
-vim.opt.expandtab = true            -- Use spaces instead of tabs
-vim.opt.tabstop = 2                 -- Tab stops equal 2 spaces
-vim.opt.shiftwidth = 2              -- Indentation width of 2 spaces
-vim.opt.smartindent = true          -- Automatic indentation
-
--- UI Tweaks
-vim.opt.cmdheight = 0               -- Minimize command-line height for a cleaner look
+```bash
+git clone https://github.com/yourusername/your-neovim-config.git ~/.config/nvim
 ```
 
-</details>
+### 2. Review the Template
 
----
+Open CONFIG_TEMPLATE.md to see the detailed configuration sections. Each section includes:
+• Description: Explains what the configuration does.
+• Code: The Lua code you can copy or modify for your setup. 3. Customize Your Configuration
+• Global Options: Adjust basic settings like leader keys, number settings, and indentation.
+• Autocommands: Modify or add autocommands to suit your workflow.
+• Colorscheme: Change the preferred colorscheme.
+• Plugins: Add or remove plugins based on your needs. You can use Lazy.nvim, Packer.nvim, or your preferred plugin manager.
 
-## Autocommands
+### 3. Split the Configuration
 
-#### Description
-This section defines autocommands to trigger actions on specific events. For example, it formats the code before saving and reloads files that change outside of Neovim.
+Although this template uses a single Markdown file for demonstration, you can split your configuration into separate Lua files (e.g., options.lua, autocmds.lua, plugins.lua) and source them from your init.lua.
 
-<details>
-  <summary>Code</summary>
+### 4. Further Customization
 
-```lua
--- Autocommands
+Expand the template by adding new sections such as key mappings, LSP configurations, and other custom utilities. Each section in the template includes detailed notations to guide you.
 
--- Format buffer before saving (if LSP formatting is available)
-vim.api.nvim_create_autocmd("BufWritePre", {
-  pattern = "*",
-  callback = function()
-    if vim.lsp.buf.format then
-      vim.lsp.buf.format({ async = false })
-    end
-  end,
-})
+### 5. Logging & Debugging
 
--- Reload file if it changes outside of Neovim (useful when editing remote files)
-vim.api.nvim_create_autocmd({ "FocusGained", "TermClose", "TermLeave" }, {
-  callback = function()
-    vim.cmd("checktime")
-  end,
-})
-```
+The template uses a simple logging function that writes to a log file in your Neovim cache directory (~/.cache/nvim/plugin_manager.log). Adjust the global log level by setting \_G.LOG_LEVEL in your configuration (default is set to vim.log.levels.ERROR).
 
-</details>
+## Contributions
 
----
-
-## Colorscheme Section
-
-#### Description
-This section loads your preferred colorscheme and falls back to a default if the preferred scheme is not available.
-_For more details, see [Neovim Colorscheme Docs](https://neovim.io/doc/user/ui.html#colorscheme)._
-
-<details>
-  <summary>Code</summary>
-
-```lua
--- Colorscheme Setup
-vim.cmd [[colorscheme nightfly]]
-local custom_highlight = vim.api.nvim_create_augroup("CustomHighlight", {})
-vim.api.nvim_create_autocmd("ColorScheme", {
-  pattern = "nightfly",
-  callback = function()
-    vim.api.nvim_set_hl(0, "Function", { fg = "#82aaff", bold = true })
-  end,
-  group = custom_highlight,
-})
-```
-
-</details>
-
----
-
-## Plugins
-
-Below are a few example plugin configurations. (You can expand this section with additional plugins as needed.)
-
-### Treesitter
-
-#### Description
-Treesitter provides advanced syntax highlighting and structural understanding using tree-based parsing.
-_Read more: [nvim-treesitter GitHub](https://github.com/nvim-treesitter/nvim-treesitter)_
-
-<details>
-  <summary>Code</summary>
-
-```lua
-return {
-  {
-    "nvim-treesitter/nvim-treesitter",
-    build = ":TSUpdate",  -- Automatically update parsers on install
-    opts = {
-      ensure_installed = { "lua", "python", "javascript" },
-      highlight = { enable = true },
-      indent = { enable = true },
-    },
-  },
-}
-```
-
-</details>
-
----
-
-### Dashboard
-
-#### Description
-Dashboard-nvim creates a startup screen that appears on VimEnter, providing quick access to common actions like opening a new file or finding recent files.
-_Read more: [dashboard-nvim GitHub](https://github.com/nvimdev/dashboard-nvim)_
-
-<details>
-  <summary>Code</summary>
-
-```lua
-return {
-  {
-    "nvimdev/dashboard-nvim",
-    event = "VimEnter",
-    opts = function()
-      return {
-        theme = "doom",  -- Choose a theme: e.g., doom, alpha, etc.
-        hide = { statusline = false },
-        config = {
-          header = {
-            "Welcome to Neovim",
-            "Your custom startup screen"
-          },
-          center = {
-            { action = "ene | startinsert", desc = "New File", key = "n" },
-            { action = "Telescope find_files", desc = "Find File", key = "f" },
-            { action = "Telescope oldfiles", desc = "Recent Files", key = "r" },
-          },
-          footer = { "Happy Coding!" },
-        },
-      }
-    end,
-  },
-}
-```
-
-</details>
-
----
-
-### Moonfly Colorscheme
-
-#### Description
-Moonfly is a visually appealing Neovim colorscheme inspired by the moon.
-_Read more: [vim-moonfly-colors GitHub](https://github.com/bluz71/vim-moonfly-colors)_
-
-<details>
-  <summary>Code</summary>
-
-```lua
-return {
-  {
-    "bluz71/vim-moonfly-colors",
-  },
-}
-```
-
-</details>
-
----
+Contributions, suggestions, and bug reports are welcome. Feel free to open an issue or submit a pull request to improve this template.
 
 ## Inspiration
 
 I'd been considering a single init file for quite a while, but then I saw [OXY2DEV's](https://github.com/OXY2DEV) post on Reddit about [init.md](https://www.reddit.com/r/neovim/comments/1ev675c/you_have_seen_initvim_initlua_prepare_to_see/). The thing that most appealed to me about this idea was that I could keep notes and separate configuration options in the markdown file.
 
 My attempt at init.lua got a little out of control for several reasons.
+
 1. I wanted it to work with more than one package manager so that if something else comes along, I had the structure to easily add it.
 2. I wanted [Lazy](https://github.com/folke/lazy.nvim) to install if there was no package manager so that the init could start from scratch.
 3. I've always hated forced-restarts after installs. I figured Neovim should be able to install everything in one go.
 4. I've been transitioning from Homebrew to Nix on my Mac. I started this process because I found the [DietPi](https://github.com/MichaIng/DietPi) project and enjoyed its declarative setup options.
 5. I kept running into edge cases where detecting fenced lua code blocks wasn't enough.
 6. I like logging. Maybe too much.
+
+This is my first public project.
+
+## License
+
+This project is licensed under the MIT License.
