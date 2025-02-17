@@ -1,4 +1,4 @@
-# Neovim Config Template
+# Nvim Init.md
 
 This repository provides a minimal Neovim configuration template written in Lua. It covers key areas such as Global Options, Autocommands, Colorscheme setup, and a few example plugins (like Treesitter and Dashboard). Use this as a starting point to create your own custom Neovim configuration.
 
