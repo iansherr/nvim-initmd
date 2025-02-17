@@ -2,18 +2,27 @@
 
 This repository provides a minimal Neovim configuration template written in Lua. It covers key areas such as Global Options, Autocommands, Colorscheme setup, and a few example plugins (like Treesitter and Dashboard). Use this as a starting point to create your own custom Neovim configuration.
 
-Features
-• Global Options: Configures basic editor behavior including leader keys, line numbering, tab settings, clipboard, and more.
-• Autocommands: Automatically triggers actions on events (e.g., formatting on save, reloading changed files).
-• Colorscheme Section: Loads your preferred colorscheme with a fallback if it’s unavailable.
-• Plugin Examples: Provides example configurations for popular plugins:
-• Treesitter: For advanced syntax highlighting and code understanding.
-• Dashboard: A startup dashboard offering quick access to common actions.
-• Moonfly Colorscheme: An example colorscheme plugin.
+## Features
 
-Repository Structure
-• nvim-config-template.md: Contains the annotated configuration template with detailed explanations and code snippets.
-• README.md: (This file) Provides an overview and instructions on how to use the configuration template.
+- Global Options: Configures basic editor behavior including leader keys, line numbering, tab settings, clipboard, and more.
+
+- Autocommands: Automatically triggers actions on events (e.g., formatting on save, reloading changed files).
+
+- Colorscheme Section: Loads your preferred colorscheme with a fallback if it’s unavailable.
+
+- Plugin Examples: Provides example configurations for popular plugins:
+
+- Treesitter: For advanced syntax highlighting and code understanding.
+
+- Dashboard: A startup dashboard offering quick access to common actions.
+
+- Moonfly Colorscheme: An example colorscheme plugin.
+
+## Repository Structure
+
+- nvim-config-template.md: Contains the annotated configuration template with detailed explanations and code snippets.
+
+- README.md: (This file) Provides an overview and instructions on how to use the configuration template.
 
 - init.lua: The main configuration file that makes nvim-init.md possible.
 
@@ -30,12 +39,18 @@ git clone https://github.com/yourusername/your-neovim-config.git ~/.config/nvim
 ### 2. Review the Template
 
 Open CONFIG_TEMPLATE.md to see the detailed configuration sections. Each section includes:
-• Description: Explains what the configuration does.
-• Code: The Lua code you can copy or modify for your setup. 3. Customize Your Configuration
-• Global Options: Adjust basic settings like leader keys, number settings, and indentation.
-• Autocommands: Modify or add autocommands to suit your workflow.
-• Colorscheme: Change the preferred colorscheme.
-• Plugins: Add or remove plugins based on your needs. You can use Lazy.nvim, Packer.nvim, or your preferred plugin manager.
+
+- Description: Explains what the configuration does.
+
+- Code: The Lua code you can copy or modify for your setup. 3. Customize Your Configuration
+
+- Global Options: Adjust basic settings like leader keys, number settings, and indentation.
+
+- Autocommands: Modify or add autocommands to suit your workflow.
+
+- Colorscheme: Change the preferred colorscheme.
+
+- Plugins: Add or remove plugins based on your needs. You can use Lazy.nvim, Packer.nvim, or your preferred plugin manager.
 
 ### 3. Split the Configuration
 
