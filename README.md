@@ -33,7 +33,7 @@ This repository provides a minimal Neovim configuration template written in Lua.
 Clone this repository to your local machine:
 
 ```bash
-git clone https://github.com/yourusername/your-neovim-config.git ~/.config/nvim
+git clone https://github.com/iansherr/nvim-initmd ~/.config/nvim
 ```
 
 ### 2. Review the Template
@@ -77,7 +77,7 @@ My attempt at init.lua got a little out of control for several reasons.
 1. I wanted it to work with more than one package manager so that if something else comes along, I had the structure to easily add it.
 2. I wanted [Lazy](https://github.com/folke/lazy.nvim) to install if there was no package manager so that the init could start from scratch.
 3. I've always hated forced-restarts after installs. I figured Neovim should be able to install everything in one go.
-4. I've been transitioning from Homebrew to Nix on my Mac. I started this process because I found the [DietPi](https://github.com/MichaIng/DietPi) project and enjoyed its declarative setup options.
+4. I've been transitioning from [Homebrew](https://brew.sh/) to [NixOS/nix-darwin](https://github.com/LnL7/nix-darwin) on my Mac. I started this process because I found the [DietPi](https://github.com/MichaIng/DietPi) project and enjoyed its declarative setup options.
 5. I kept running into edge cases where detecting fenced lua code blocks wasn't enough.
 6. I like logging. Maybe too much.
 
