@@ -14,23 +14,44 @@
 --------------------------------------------------------------------------------
 -- GLOBAL VARIABLES & DEBUG SETTINGS
 --------------------------------------------------------------------------------
-_G.LOG_LEVEL = vim.log.levels.ERROR             -- Set log level here
-_G.detected_code_blocks = {}                    -- For storing detected code blocks (TRACE mode)
-_G.INIT_UI = _G.INIT_UI or false                -- Set this flag to true to launch the Init UI
+_G.LOG_LEVEL = vim.log.levels.ERROR    -- Set log level here
+_G.detected_code_blocks = {}            -- For storing detected code blocks (TRACE mode)
+_G.INIT_UI = _G.INIT_UI or false        -- Set this flag to true to launch the Init UI
+_G.TEST_MODE = _G.TEST_MODE or false    -- When true, logs extra details regarding config execution
+_G.plugin_config_associations = {}      -- Table to store mapping of config blocks to plugin names
 
-local pending_commands = {}                     -- Commands that failed and need re-trying
+local pending_commands = {}             -- Commands that failed and need re-trying
 
 --------------------------------------------------------------------------------
 -- Helper: ensure_directory_exists(path)
 --------------------------------------------------------------------------------
 local function ensure_directory_exists(path)
   local uv = vim.loop
-  if not uv.fs_stat(path) then
-    local ok, err = uv.fs_mkdir(path, 448)     -- 0700 in octal
-    if not ok then
-      vim.notify("Error creating directory: " .. path .. "\n" .. err, vim.log.levels.ERROR)
+  local sep = package.config:sub(1,1)
+  local segments = {}
+
+  for segment in string.gmatch(path, "[^" .. sep .. "]+") do
+    table.insert(segments, segment)
+  end
+
+  local current = (sep == "/" and "/" or "")
+  for _, part in ipairs(segments) do
+    current = current .. part .. sep
+    if not uv.fs_stat(current) then
+      local ok, err = uv.fs_mkdir(current, 448) -- 0700 in octal
+      if not ok then
+        vim.notify("Failed to create dir: " .. current .. "\n" .. err, vim.log.levels.ERROR)
+        return false
+      end
     end
   end
+  return true
+end
+
+-- Sanity check cache dir
+local test_cache = vim.fn.stdpath("cache")
+if not ensure_directory_exists(test_cache) then
+  error("Could not ensure cache directory exists: " .. test_cache)
 end
 
 --------------------------------------------------------------------------------
@@ -180,7 +201,12 @@ local function update_block_hashes(blocks)
   for i, block in ipairs(blocks) do
     hash_table[i] = vim.fn.sha256(block)
   end
-  local hash_file = vim.fn.stdpath("cache") .. "/md_block_hashes.json"
+
+  local hash_dir = vim.fn.stdpath("cache")
+  local hash_file = hash_dir .. "/md_block_hashes.json"
+
+  ensure_directory_exists(hash_dir)
+
   local old_hashes = {}
   local f = io.open(hash_file, "r")
   if f then
@@ -190,6 +216,7 @@ local function update_block_hashes(blocks)
       old_hashes = vim.fn.json_decode(content) or {}
     end
   end
+
   local changed_blocks = {}
   for i, new_hash in ipairs(hash_table) do
     if old_hashes[i] ~= new_hash then
@@ -197,21 +224,30 @@ local function update_block_hashes(blocks)
       changed_blocks[i] = true
     end
   end
+
   if #old_hashes > #hash_table then
     for i = #hash_table + 1, #old_hashes do
       log("Config block " .. i .. " has been removed.", vim.log.levels.INFO)
       changed_blocks[i] = true
     end
   end
-  local f_out = io.open(hash_file, "w")
-  if f_out then
-    f_out:write(vim.fn.json_encode(hash_table))
-    f_out:close()
+
+  local ok = ensure_directory_exists(hash_dir)
+  if ok then
+    local f_out = io.open(hash_file, "w")
+    if f_out then
+      f_out:write(vim.fn.json_encode(hash_table))
+      f_out:close()
+    else
+      log("Unable to open file for writing: " .. hash_file, vim.log.levels.ERROR)
+    end
   else
-    log("Unable to write code block hashes to " .. hash_file, vim.log.levels.ERROR)
+    log("Unable to create hash directory: " .. hash_dir, vim.log.levels.ERROR)
   end
+
   _G.changed_blocks = changed_blocks
 end
+
 
 --------------------------------------------------------------------------------
 -- Section 4: Classify Code Blocks into Plugin Specs or Standalone Configs
@@ -322,6 +358,15 @@ local function is_external_config_code(code)
   return code:match("^local%s+function%s+config")
 end
 
+
+-- Guess plugin name from a config block.
+local function guess_plugin_from_config(code)
+  if type(code) ~= "string" then return nil end
+  -- Look for common require() usage; adjust or extend patterns as needed.
+  local plugin_name = code:match('require%s*%(?%s*["\']([^"\']+)["\']%s*%)?')
+  return plugin_name
+end
+
 --   Given a list of Lua code blocks (from Markdown), it returns two lists:
 --   • plugin_specs: Blocks that are plugin specification tables.
 --   • standalone_configs: Blocks that are standalone configuration functions or code.
@@ -339,13 +384,14 @@ local function extract_plugins_and_configs(lua_code_blocks)
     code = preprocess_code(code)
     if is_disabled_code(code) then
       log("Skipping disabled code block #" .. i, vim.log.levels.INFO)
-    -- First, check for a bare plugin spec.
+      -- First, check for a bare plugin spec.
     elseif is_bare_plugin_spec(code) then
       -- Auto-wrap the bare plugin spec.
       local wrapped_code = 'return { "' .. code .. '" }'
       local fn, err_compile = safe_load(wrapped_code)
       if not fn then
-        log("Error compiling bare plugin spec block #" .. i, vim.log.levels.ERROR, { error = err_compile, code = wrapped_code })
+        log("Error compiling bare plugin spec block #" .. i, vim.log.levels.ERROR,
+          { error = err_compile, code = wrapped_code })
       else
         local ok, result = pcall(fn)
         if ok and type(result) == "table" then
@@ -353,7 +399,8 @@ local function extract_plugins_and_configs(lua_code_blocks)
           table.insert(plugin_specs, result)
           log("Bare plugin spec added from block #" .. i, vim.log.levels.INFO, { result = result })
         else
-          log("Error running bare plugin spec block #" .. i, vim.log.levels.ERROR, { error = result, code = wrapped_code })
+          log("Error running bare plugin spec block #" .. i, vim.log.levels.ERROR,
+            { error = result, code = wrapped_code })
         end
       end
     elseif is_plugin_spec_code(code) then
@@ -371,7 +418,8 @@ local function extract_plugins_and_configs(lua_code_blocks)
                 log("Plugin spec added from nested item in block #" .. i, vim.log.levels.INFO, { result = item })
               else
                 table.insert(standalone_configs, item)
-                log("Nested item in block #" .. i .. " treated as standalone config", vim.log.levels.DEBUG, { item = item })
+                log("Nested item in block #" .. i .. " treated as standalone config", vim.log.levels.DEBUG,
+                  { item = item })
               end
             end
           elseif result[1] and type(result[1]) == "string" and result[1] ~= "" then
@@ -413,11 +461,42 @@ local function extract_plugins_and_configs(lua_code_blocks)
     end
   end
 
-  log("Extracted " .. #plugin_specs .. " plugin specs and " .. #standalone_configs .. " config blocks.", vim.log.levels.INFO)
+  log("Extracted " .. #plugin_specs .. " plugin specs and " .. #standalone_configs .. " config blocks.",
+    vim.log.levels.INFO)
   return plugin_specs, standalone_configs
 end
 
 
+-- Associate standalone config blocks with plugin names.
+local function associate_plugins_and_configs(plugin_specs, standalone_configs)
+  local associations = {}
+  -- First pass: try to guess using a simple require() search.
+  for i, config in ipairs(standalone_configs) do
+    if type(config) == "string" then
+      local guessed = guess_plugin_from_config(config)
+      if guessed then
+        associations[i] = guessed
+        log("Guessed plugin association for config block #" .. i .. ": " .. guessed, vim.log.levels.DEBUG)
+      end
+    end
+  end
+  -- Second pass: check if any known plugin spec value appears in the config.
+  for _, spec in ipairs(plugin_specs) do
+    local plugin_identifier = spec[1] or spec.dir or spec.import
+    if plugin_identifier and type(plugin_identifier) == "string" then
+      for i, config in ipairs(standalone_configs) do
+        if not associations[i] and type(config) == "string" and config:find(plugin_identifier, 1, true) then
+          associations[i] = plugin_identifier
+          log("Associated config block #" .. i .. " with plugin spec: " .. plugin_identifier, vim.log.levels.DEBUG)
+        end
+      end
+    end
+  end
+  _G.plugin_config_associations = associations
+  local assoc_file = vim.fn.stdpath("cache") .. "/plugin_config_associations.json"
+  vim.fn.writefile({ vim.fn.json_encode(associations) }, assoc_file)
+  log("Saved plugin–config associations to: " .. assoc_file, vim.log.levels.TRACE)
+end
 
 
 --------------------------------------------------------------------------------
@@ -500,21 +579,20 @@ end
 -- Section 6: Execute Config Blocks
 --------------------------------------------------------------------------------
 local function apply_extra_settings()
-    for key, value in pairs(_G) do
-        if key:match("^extra_") then
-            log("Applying extra setting: " .. key, vim.log.levels.INFO, value)
-            if key == "extra_mappings" then
-                for mode, mappings in pairs(value) do
-                    for lhs, rhs in pairs(mappings) do
-                        vim.keymap.set(mode, lhs, rhs[1], { desc = rhs[2] })
-                    end
-                end
-            elseif key == "extra_colorscheme_integrations" then
-                vim.g.colorscheme_integrations = value
-            else
-                vim.g[key] = value
-            end
+  for key, value in pairs(_G) do
+    if key:match("^extra_") then
+      log("Applying extra setting: " .. key, vim.log.levels.INFO, value)
+      if key == "extra_mappings" then
+        for mode, mappings in pairs(value) do
+          for lhs, rhs in pairs(mappings) do
+            vim.keymap.set(mode, lhs, rhs[1], { desc = rhs[2] })
+          end
         end
+      elseif key == "extra_colorscheme_integrations" then
+        vim.g.colorscheme_integrations = value
+      else
+        vim.g[key] = value
+      end
     end
   end
   log("All extra settings applied.", vim.log.levels.INFO)
@@ -522,6 +600,12 @@ end
 
 local function execute_configs(standalone_configs)
   for i, config in ipairs(standalone_configs) do
+    -- If test mode is enabled, log which config is about to run along with its association.
+    if _G.TEST_MODE then
+      local assoc_info = _G.plugin_config_associations and _G.plugin_config_associations[i] or "none"
+      log("Test mode: About to run config block #" .. i .. " with association: " .. assoc_info, vim.log.levels.DEBUG)
+    end
+
     if type(config) == "function" then
       log("Executing extracted config function #" .. i, vim.log.levels.DEBUG)
       local ok, runtime_err = pcall(config)
@@ -565,6 +649,7 @@ local function execute_configs(standalone_configs)
 end
 
 
+
 --------------------------------------------------------------------------------
 -- Section 7: Main Execution
 --------------------------------------------------------------------------------
@@ -574,6 +659,9 @@ local blocks = load_markdown_configs()
 update_block_hashes(blocks)
 local plugin_specs, standalone_configs = extract_plugins_and_configs(blocks)
 log("Scanned " .. #plugin_specs .. " plugin specs and " .. #standalone_configs .. " config blocks.", vim.log.levels.INFO)
+
+-- Build plugin–config associations for debugging and trace
+associate_plugins_and_configs(plugin_specs, standalone_configs)
 
 setup_plugins(plugin_specs)
 execute_configs(standalone_configs)
@@ -590,4 +678,27 @@ if #pending_commands > 0 then
     end
     pending_commands = {}
   end, 200)
+end
+
+--------------------------------------------------------------------------------
+-- Optional: Init UI
+-- If _G.INIT_UI is true, display a simple menu to view logs, detected blocks,
+-- or re-run all config blocks.
+--------------------------------------------------------------------------------
+if _G.INIT_UI then
+  local choice = vim.fn.inputlist({
+    "== Init UI ==",
+    "1. View log file (~/.cache/nvim/plugin_manager.log)",
+    "2. View detected code blocks (~/.cache/nvim/detected_blocks.json)",
+    "3. Re-run all config blocks",
+    "4. Exit"
+  })
+  if choice == 1 then
+    vim.cmd("edit " .. vim.fn.stdpath("cache") .. "/plugin_manager.log")
+  elseif choice == 2 then
+    vim.cmd("edit " .. vim.fn.stdpath("cache") .. "/detected_blocks.json")
+  elseif choice == 3 then
+    execute_configs(standalone_configs)
+    vim.notify("Re-ran config blocks", vim.log.levels.INFO)
+  end
 end
