@@ -363,7 +363,7 @@ local function extract_plugins_and_configs(lua_code_blocks)
       else
         local ok, result = pcall(fn)
         if ok and type(result) == "table" then
-          if vim.tbl_islist(result) then
+          if vim.islist(result) then
             for _, item in ipairs(result) do
               if type(item) == "table" and ((item[1] and type(item[1]) == "string" and item[1] ~= "") or item.dir or item.import or item.config) then
                 if is_manual_code(code) then item.manual = true end
@@ -516,7 +516,8 @@ local function apply_extra_settings()
             end
         end
     end
-    log("All extra settings applied.", vim.log.levels.INFO)
+  end
+  log("All extra settings applied.", vim.log.levels.INFO)
 end
 
 local function execute_configs(standalone_configs)
