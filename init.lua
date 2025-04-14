@@ -578,93 +578,134 @@ end
 --------------------------------------------------------------------------------
 -- Section 6: Execute Config Blocks
 --------------------------------------------------------------------------------
-local function apply_extra_settings()
-  for key, value in pairs(_G) do
-    if key:match("^extra_") then
-      log("Applying extra setting: " .. key, vim.log.levels.INFO, value)
-      if key == "extra_mappings" then
-        for mode, mappings in pairs(value) do
-          for lhs, rhs in pairs(mappings) do
-            vim.keymap.set(mode, lhs, rhs[1], { desc = rhs[2] })
-          end
+-- Table to hold deferred config functions keyed by plugin identifier.
+local deferred_plugin_configs = {}
+
+-- Process standalone config blocks.
+-- For each block, if it’s associated with a plugin (via _G.plugin_config_associations),
+-- compile it into a function and store it in deferred_plugin_configs.
+-- Otherwise, keep it to execute immediately.
+local function process_standalone_configs(standalone_configs)
+  standalone_configs = standalone_configs or {}  -- default to an empty table if nil
+  local immediate_configs = {}
+  for i, config in ipairs(standalone_configs) do
+    local plugin_association = _G.plugin_config_associations and _G.plugin_config_associations[i]
+    -- If the config block defines keymaps, force it to run immediately.
+    local has_keymaps = type(config) == "string" and config:find("vim%.keymap%.set")
+    if plugin_association and not has_keymaps then
+      if type(config) == "string" then
+        local fn, err = loadstring(config)
+        if fn then
+          deferred_plugin_configs[plugin_association] = deferred_plugin_configs[plugin_association] or {}
+          table.insert(deferred_plugin_configs[plugin_association], fn)
+          log("Deferred config block #" .. i .. " registered for plugin: " .. plugin_association, vim.log.levels.DEBUG)
+        else
+          log("Failed to compile deferred config for plugin: " .. plugin_association, vim.log.levels.ERROR, { error = err })
         end
-      elseif key == "extra_colorscheme_integrations" then
-        vim.g.colorscheme_integrations = value
+      elseif type(config) == "function" then
+        deferred_plugin_configs[plugin_association] = deferred_plugin_configs[plugin_association] or {}
+        table.insert(deferred_plugin_configs[plugin_association], config)
+        log("Deferred config function from block #" .. i .. " registered for plugin: " .. plugin_association, vim.log.levels.DEBUG)
       else
-        vim.g[key] = value
+        log("Skipping deferred config block #" .. i .. " (unexpected type: " .. type(config) .. ")", vim.log.levels.WARN)
       end
+    else
+      -- Either there's no plugin association, or the block appears to contain keymaps.
+      table.insert(immediate_configs, config)
     end
   end
-  log("All extra settings applied.", vim.log.levels.INFO)
+  return immediate_configs
 end
 
-local function execute_configs(standalone_configs)
-  for i, config in ipairs(standalone_configs) do
-    -- If test mode is enabled, log which config is about to run along with its association.
-    if _G.TEST_MODE then
-      local assoc_info = _G.plugin_config_associations and _G.plugin_config_associations[i] or "none"
-      log("Test mode: About to run config block #" .. i .. " with association: " .. assoc_info, vim.log.levels.DEBUG)
-    end
+--------------------------------------------------------------------------------
+-- After scanning and associating config blocks, process them:
+local immediate_configs = process_standalone_configs(standalone_configs)
 
+
+
+--------------------------------------------------------------------------------
+-- Inject deferred plugin configs into plugin specifications.
+-- For each plugin spec, if its identifier matches a key in deferred_plugin_configs,
+-- update its config field such that it defers execution until the plugin is loaded.
+plugin_specs = plugin_specs or {}
+for _, spec in ipairs(plugin_specs) do
+  if type(spec) == "table" then
+    local plugin_identifier = spec[1] or spec.dir or spec.import
+    if plugin_identifier and deferred_plugin_configs[plugin_identifier] then
+      local original_config = spec.config  -- Might be nil.
+      spec.config = function(...)
+        if type(original_config) == "function" then
+          local ok, err = pcall(original_config, ...)
+          if not ok then
+            log("Error in original config for " .. plugin_identifier, vim.log.levels.ERROR, { error = err })
+          end
+        end
+        local deferred = deferred_plugin_configs[plugin_identifier] or {}
+        for _, cfg in ipairs(deferred) do
+          local ok, err = pcall(cfg)
+          if not ok then
+            log("Error executing deferred config for " .. plugin_identifier, vim.log.levels.ERROR, { error = err })
+          else
+            log("Deferred config for " .. plugin_identifier .. " executed successfully", vim.log.levels.DEBUG)
+          end
+        end
+      end
+      log("Injected deferred config into plugin spec: " .. plugin_identifier, vim.log.levels.INFO)
+    end
+  else
+    log("Skipping plugin spec (expected table but got " .. type(spec) .. ")", vim.log.levels.WARN)
+  end
+end
+
+--------------------------------------------------------------------------------
+-- In your main section, after setting up plugins, execute any immediate configs.
+-- These are config blocks that weren’t associated with a plugin.
+local function execute_immediate_configs(configs)
+  for i, config in ipairs(configs) do
     if type(config) == "function" then
-      log("Executing extracted config function #" .. i, vim.log.levels.DEBUG)
-      local ok, runtime_err = pcall(config)
+      log("Executing immediate config function #" .. i, vim.log.levels.DEBUG)
+      local ok, err = pcall(config)
       if not ok then
-        log("Error executing config function #" .. i, vim.log.levels.ERROR, { error = runtime_err })
-      else
-        log("Executed config function #" .. i, vim.log.levels.DEBUG)
+        log("Error executing immediate config function #" .. i, vim.log.levels.ERROR, { error = err })
       end
     elseif type(config) == "string" then
-      log("Executing config block #" .. i, vim.log.levels.DEBUG, config)
+      log("Executing immediate config block #" .. i, vim.log.levels.DEBUG, config)
       local fn, err = loadstring(config)
       if fn then
         local ok, runtime_err = pcall(fn)
         if not ok then
-          log("Error executing config block #" .. i, vim.log.levels.ERROR, { code = config, error = runtime_err })
+          log("Error executing immediate config block #" .. i, vim.log.levels.ERROR, { code = config, error = runtime_err })
         else
-          log("Executed config block #" .. i, vim.log.levels.DEBUG)
+          log("Executed immediate config block #" .. i, vim.log.levels.DEBUG)
         end
       else
-        log("Error compiling config block #" .. i, vim.log.levels.ERROR, { code = config, error = err })
-      end
-    elseif type(config) == "table" then
-      if type(config.setup) == "function" then
-        log("Executing config setup from table in block #" .. i, vim.log.levels.DEBUG)
-        local ok, runtime_err = pcall(config.setup)
-        if not ok then
-          log("Error executing config setup from table in block #" .. i, vim.log.levels.ERROR, { error = runtime_err })
-        else
-          log("Executed config setup from table in block #" .. i, vim.log.levels.DEBUG)
-        end
-      else
-        log("Skipping config block #" .. i .. " (table with no setup function)", vim.log.levels.WARN, { config = config })
+        log("Error compiling immediate config block #" .. i, vim.log.levels.ERROR, { code = config, error = err })
       end
     else
-      log("Skipping config block #" .. i .. " (unexpected type: " .. type(config) .. ")", vim.log.levels.WARN)
+      log("Skipping immediate config block #" .. i .. " (unexpected type: " .. type(config) .. ")", vim.log.levels.WARN)
     end
   end
-
-  apply_extra_settings()
-  log("Standalone configurations executed.", vim.log.levels.INFO)
 end
 
-
-
 --------------------------------------------------------------------------------
--- Section 7: Main Execution
---------------------------------------------------------------------------------
+-- Main Execution Section (unchanged except for using immediate_configs)
 log("=== Starting Single-file Neovim config ===", vim.log.levels.INFO)
 
 local blocks = load_markdown_configs()
 update_block_hashes(blocks)
 local plugin_specs, standalone_configs = extract_plugins_and_configs(blocks)
+_G.plugin_specs = plugin_specs
+_G.standalone_configs = standalone_configs
 log("Scanned " .. #plugin_specs .. " plugin specs and " .. #standalone_configs .. " config blocks.", vim.log.levels.INFO)
 
--- Build plugin–config associations for debugging and trace
+-- Build plugin–config associations for debugging and trace.
 associate_plugins_and_configs(plugin_specs, standalone_configs)
 
+-- Process deferred vs. immediate configurations.
+immediate_configs = process_standalone_configs(standalone_configs)  -- (if not already done earlier)
+
 setup_plugins(plugin_specs)
-execute_configs(standalone_configs)
+execute_immediate_configs(immediate_configs)
 log("=== Done loading config ===", vim.log.levels.INFO)
 
 --------------------------------------------------------------------------------
@@ -698,7 +739,7 @@ if _G.INIT_UI then
   elseif choice == 2 then
     vim.cmd("edit " .. vim.fn.stdpath("cache") .. "/detected_blocks.json")
   elseif choice == 3 then
-    execute_configs(standalone_configs)
+    process_standalone_configs(_G.standalone_configs)
     vim.notify("Re-ran config blocks", vim.log.levels.INFO)
   end
 end
