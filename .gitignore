@@ -1,0 +1,16 @@
+# Keep the public repository intentionally small. Local notes/configs/backups
+# and all files not explicitly allowlisted below stay out of Git.
+/*
+!/.gitignore
+!/README.md
+!/nvim-config-template.md
+!/setup-init-md.sh
+!/runtime/
+!/runtime/**
+!/scripts/
+!/scripts/test-pack-config.sh
+!/scripts/test-markdown-parser.lua
+!/scripts/test-installer.sh
+
+# Personal-only content
+/context/
