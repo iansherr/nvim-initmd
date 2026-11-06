@@ -18,39 +18,82 @@ local function read_markdown(filepath)
     return content
 end
 
--- Extract all lua code blocks from markdown
-local function extract_code_blocks(content)
+local function read_spec_file(relative_path, markdown_filepath)
+    if relative_path:match("^[/\\]") or relative_path:match("^%a:[/\\]") then
+        error("Spec file path must be relative to init.md: " .. relative_path)
+    end
+
+    local normalized_path = relative_path:gsub("\\", "/")
+    for segment in normalized_path:gmatch("[^/]+") do
+        if segment == ".." then
+            error("Spec file path cannot traverse above init.md directory: " .. relative_path)
+        end
+    end
+
+    local uv = vim.uv or vim.loop
+    local config_dir = uv.fs_realpath(vim.fn.fnamemodify(markdown_filepath, ":p:h"))
+    if not config_dir then
+        error("Cannot resolve init.md directory: " .. markdown_filepath)
+    end
+
+    local candidate = vim.fs.normalize(config_dir .. "/" .. normalized_path)
+    local resolved_path = uv.fs_realpath(candidate)
+    if not resolved_path then
+        error("Cannot read spec file: " .. relative_path)
+    end
+
+    local path_from_config = vim.fs.relpath(config_dir, resolved_path)
+    if not path_from_config or path_from_config == ".." or path_from_config:match("^%.%.[/\\]") then
+        error("Spec file resolves outside init.md directory: " .. relative_path)
+    end
+
+    return read_markdown(resolved_path)
+end
+
+-- Extract inline spec blocks and explicit references to external Lua spec files.
+local function extract_code_blocks(content, markdown_filepath)
     local blocks = {}
+    local include_sources = {}
     local current_block = ""
     local in_code_block = false
     local pending_spec = false
     local current_is_spec = false
-    local has_explicit_spec_blocks = content:match("%*%*Spec:%*%*") or content:match("<summary>Spec</summary>")
+    local has_explicit_spec_blocks = content:match("%*%*Spec:%*%*")
+        or content:match("<summary>Spec</summary>")
+        or content:match("%*%*Spec file:%*%*")
 
     for line in content:gmatch("[^\n]+") do
-        -- Standalone label only: inline mentions of "**Spec:**" in prose must
-        -- not mark the next lua block as a spec.
-        if line:match("^%s*%*%*Spec:%*%*%s*$") or line:match("^%s*<summary>Spec</summary>%s*$") then
-            pending_spec = true
-        end
-
-        if line:match("^```lua$") then
-            in_code_block = true
-            current_block = ""
-            current_is_spec = pending_spec or not has_explicit_spec_blocks
-            pending_spec = false
-        elseif line:match("^```$") and in_code_block then
-            in_code_block = false
-            if current_is_spec and current_block:match("return%s*{") then
-                table.insert(blocks, current_block)
+        if in_code_block then
+            if line:match("^```$") then
+                in_code_block = false
+                if current_is_spec and current_block:match("return%s*{") then
+                    table.insert(blocks, current_block)
+                end
+                current_is_spec = false
+            else
+                current_block = current_block .. line .. "\n"
             end
-            current_is_spec = false
-        elseif in_code_block then
-            current_block = current_block .. line .. "\n"
+        else
+            local include_path = line:match("^%s*%*%*Spec file:%*%*%s+`([^`]+)`%s*$")
+            if include_path then
+                assert(markdown_filepath, "Spec file imports require a Markdown filepath")
+                table.insert(blocks, read_spec_file(include_path, markdown_filepath))
+                include_sources[#blocks] = include_path
+                pending_spec = false
+            elseif line:match("^%s*%*%*Spec file:%*%*%s*") then
+                error("Spec file directive requires exactly one backticked relative path")
+            elseif line:match("^%s*%*%*Spec:%*%*%s*$") or line:match("^%s*<summary>Spec</summary>%s*$") then
+                pending_spec = true
+            elseif line:match("^```lua%s*$") then
+                in_code_block = true
+                current_block = ""
+                current_is_spec = pending_spec or not has_explicit_spec_blocks
+                pending_spec = false
+            end
         end
     end
 
-    return blocks
+    return blocks, include_sources
 end
 
 -- Load a lua table from a return statement
@@ -132,22 +175,28 @@ end
 -- Parse markdown and extract all plugins
 function M.parse(markdown_filepath)
     local content = read_markdown(markdown_filepath)
-    local code_blocks = extract_code_blocks(content)
+    local code_blocks, include_sources = extract_code_blocks(content, markdown_filepath)
 
     local plugins = {}
     local plugin_configs = {}  -- Store lazy.nvim configs (opts, keys, etc.)
 
     local seen = {}
 
-    for _, block in ipairs(code_blocks) do
-        local spec = load_spec(block)
+    for index, block in ipairs(code_blocks) do
+        local spec, spec_err = load_spec(block)
+        local include_path = include_sources[index]
+        if include_path and (spec_err or type(spec) ~= "table") then
+            error("Invalid spec file " .. include_path .. ": " .. tostring(spec_err or "must return a spec table or list"))
+        end
         if spec then
             -- Handle array of plugins (multiple plugins in one return block)
-            local specs_list = type(spec[1]) == "table" and spec or { spec }
+            local specs_list = type(spec) == "table" and type(spec[1]) == "table" and spec or { spec }
+            local converted_count = 0
 
             for _, s in ipairs(specs_list) do
                 local pack_spec, lazy_config = convert_to_pack_format(s)
                 if pack_spec then
+                    converted_count = converted_count + 1
                     local key = (pack_spec.name or "") .. "\0" .. pack_spec.src
                     if not seen[key] then
                         seen[key] = true
@@ -161,6 +210,9 @@ function M.parse(markdown_filepath)
                         end
                     end
                 end
+            end
+            if include_path and converted_count == 0 then
+                error("Spec file " .. include_path .. " returned no valid plugin specs")
             end
         end
     end
