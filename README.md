@@ -54,6 +54,24 @@ specs. Other `**Setup:**` examples are documentation only; they are never
 executed implicitly. This explicit boundary prevents prose examples from
 becoming startup code.
 
+For configurations split across plugin Lua files, add an explicit reference
+where that plugin belongs in the Markdown document:
+
+```markdown
+### which-key.nvim
+
+Notes about the plugin stay here.
+
+**Spec file:** `lua/plugins/which-key.lua`
+```
+
+The referenced file should return one spec or a list of specs, just like an
+inline `**Spec:**` block. Paths are relative to `init.md`; absolute paths,
+parent-directory traversal, missing files, and symlinks resolving outside the
+config directory are rejected. Imported spec files are evaluated to obtain
+their return value, so keep top-level code declarative; use explicit executable
+setup blocks for setup side effects. Specs keep their Markdown order.
+
 The parser can extract ordinary lazy.nvim shorthand specs such as
 `{ "owner/repo", opts = ... }` into `vim.pack` source specs. That extraction is
 not a complete automatic migration of lazy.nvim behavior: callbacks,
