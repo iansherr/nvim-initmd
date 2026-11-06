@@ -1,88 +1,82 @@
-# Nvim Init.md
+# nvim-initmd
 
-This repository provides a minimal Neovim configuration template written in Lua. It covers key areas such as Global Options, Autocommands, Colorscheme setup, and a few example plugins (like Treesitter and Dashboard). Use this as a starting point to create your own custom Neovim configuration.
+A small Markdown-driven Neovim bootstrap using Neovim's built-in `vim.pack`.
+Plugin specs, executable setup code, and readable notes can live together in
+`~/.config/nvim/init.md`.
 
-## Features
+## Requirements
 
-- Global Options: Configures basic editor behavior including leader keys, line numbering, tab settings, clipboard, and more.
+- Neovim 0.12 or newer (`vim.pack`)
+- Git
 
-- Autocommands: Automatically triggers actions on events (e.g., formatting on save, reloading changed files).
+## Install
 
-- Colorscheme Section: Loads your preferred colorscheme with a fallback if it’s unavailable.
+Clone this repository, then run:
 
-- Plugin Examples: Provides example configurations for popular plugins:
-
-- Treesitter: For advanced syntax highlighting and code understanding.
-
-- Dashboard: A startup dashboard offering quick access to common actions.
-
-- Moonfly Colorscheme: An example colorscheme plugin.
-
-## Repository Structure
-
-- nvim-config-template.md: Contains the annotated configuration template with detailed explanations and code snippets.
-
-- README.md: (This file) Provides an overview and instructions on how to use the configuration template.
-
-- init.lua: The main configuration file that makes nvim-init.md possible.
-
-## How to Use This Template
-
-### 1. Clone the Repository
-
-Clone this repository to your local machine:
-
-```bash
-git clone https://github.com/iansherr/nvim-initmd ~/.config/nvim
+```sh
+./setup-init-md.sh
+nvim
 ```
 
-### 2. Review the Template
+The installer copies the bootstrap and parser modules into
+`~/.config/nvim/init-modules/` and installs the bootstrap as `init.lua`. It
+copies `nvim-config-template.md` to `~/.config/nvim/init.md` only when there is
+no existing config, so an existing personal config is not overwritten.
 
-Open CONFIG_TEMPLATE.md to see the detailed configuration sections. Each section includes:
+## Markdown format
 
-- Description: Explains what the configuration does.
+`**Spec:**` code blocks contain Lua that returns one plugin spec or a list of
+specs. The parser collects these values and generates a call to
+`vim.pack.add(specs)`. `return` belongs to this Markdown adapter format; it is
+not part of Neovim's `vim.pack` API. Native `vim.pack.add()` accepts a list of
+spec tables, for example:
 
-- Code: The Lua code you can copy or modify for your setup. 3. Customize Your Configuration
+```lua
+vim.pack.add({
+  { src = "https://github.com/folke/which-key.nvim" },
+})
+```
 
-- Global Options: Adjust basic settings like leader keys, number settings, and indentation.
+For consistency with the API, prefer a returned list in Markdown, even for
+one plugin:
 
-- Autocommands: Modify or add autocommands to suit your workflow.
+````markdown
+**Spec:**
+```lua
+return {
+  { src = "https://github.com/folke/which-key.nvim" },
+}
+```
+````
 
-- Colorscheme: Change the preferred colorscheme.
+`**Setup: executable**` marks code the bootstrap runs after adding the plugin
+specs. Other `**Setup:**` examples are documentation only; they are never
+executed implicitly. This explicit boundary prevents prose examples from
+becoming startup code.
 
-- Plugins: Add or remove plugins based on your needs. You can use Lazy.nvim, Packer.nvim, or your preferred plugin manager.
+The parser can extract ordinary lazy.nvim shorthand specs such as
+`{ "owner/repo", opts = ... }` into `vim.pack` source specs. That extraction is
+not a complete automatic migration of lazy.nvim behavior: callbacks,
+dependencies, triggers, and setup ordering must be reviewed and represented as
+supported `vim.pack` specs or explicit executable setup blocks.
 
-### 3. Split the Configuration
+## Validate and test
 
-Although this template uses a single Markdown file for demonstration, you can split your configuration into separate Lua files (e.g., options.lua, autocmds.lua, plugins.lua) and source them from your init.lua.
+```sh
+./scripts/test-pack-config.sh
+./scripts/test-installer.sh
+```
 
-### 4. Further Customization
+The isolated test uses the public template by default. It checks parser edge
+cases, plugin installation, main config execution, and that executable setup
+blocks report no errors. To test a separate Markdown file:
 
-Expand the template by adding new sections such as key mappings, LSP configurations, and other custom utilities. Each section in the template includes detailed notations to guide you.
+```sh
+NVIM_PACK_MD=/absolute/path/to/init.md ./scripts/test-pack-config.sh
+```
 
-### 5. Logging & Debugging
+## Local privacy
 
-The template uses a simple logging function that writes to a log file in your Neovim cache directory (~/.cache/nvim/plugin_manager.log). Adjust the global log level by setting \_G.LOG_LEVEL in your configuration (default is set to vim.log.levels.ERROR).
-
-## Contributions
-
-Contributions, suggestions, and bug reports are welcome. Feel free to open an issue or submit a pull request to improve this template.
-
-## Inspiration
-
-I'd been considering a single init file for quite a while, but then I saw [OXY2DEV's](https://github.com/OXY2DEV) post on Reddit about [init.md](https://www.reddit.com/r/neovim/comments/1ev675c/you_have_seen_initvim_initlua_prepare_to_see/). The thing that most appealed to me about this idea was that I could keep notes and separate configuration options in the markdown file.
-
-My attempt at init.lua got a little out of control for several reasons.
-
-1. I wanted it to work with more than one package manager so that if something else comes along, I had the structure to easily add it.
-2. I wanted [Lazy](https://github.com/folke/lazy.nvim) to install if there was no package manager so that the init could start from scratch.
-3. I've always hated forced-restarts after installs. I figured Neovim should be able to install everything in one go.
-4. I've been transitioning from [Homebrew](https://brew.sh/) to [NixOS/nix-darwin](https://github.com/LnL7/nix-darwin) on my Mac. I started this process because I found the [DietPi](https://github.com/MichaIng/DietPi) project and enjoyed its declarative setup options.
-5. I kept running into edge cases where detecting fenced lua code blocks wasn't enough.
-6. I like logging. Maybe too much.
-
-This is my first public project.
-
-## License
-
-This project is licensed under the MIT License.
+Personal configs, local notes, backups, and experiments belong in the ignored
+`context/` directory. Only the installer/runtime, public template, tests, and
+this README are intended to be tracked in this minimal repository.
